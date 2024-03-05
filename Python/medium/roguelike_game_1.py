@@ -18,21 +18,54 @@ https://www.codewars.com/kata/651bfcbd409ea1001ef2c3cb - full description with e
 """
 
 from types import MethodType
+import re
 
-class Character:
 
-    def __get__(self, instance, cls):
-        breakpoint()
-        if not instance:
-            return self
-        else:
-            return MethodType(self, instance)
-
-    def __init__(self, name: str = 'Hero', dexterity: int = 10, strength: int = 10, intelligence: int = 10):
-        self.name = name.title()
+class Unit:
+    def __init__(self, name: str, dexterity: int, strength: int, intelligence: int):
+        self.name = name
         self.strength = strength
         self.dexterity = dexterity
         self.intelligence = intelligence
+
+    def __repr__(self):
+        return self.name
+
+class Weapon(Unit):
+    def __init__(self, name, dexterity, strength, intelligence, extra_damage: int):
+        super().__init__(name, dexterity, strength, intelligence)
+        self.extra_damage = extra_damage
+        self.name = name.capitalize().replace("_", " ")
+
+class Character(Unit):
+    WEAPON_NAME_PATTERN = r"\w+_of_\w+"
+
+    def __init__(self, name = 'Hero', dexterity = 10, strength = 10, intelligence = 10):
+        super().__init__(name, dexterity, strength, intelligence)
+        self.name = name.capitalize()
+        self.weapons = {}
+
+    def add_weapon(self, name, dexterity, strength, intelligence, extra_damage):
+        if name not in self.weapons:
+            self.weapons.update({name: Weapon(name, dexterity, strength, intelligence, extra_damage)})
+        else:
+            weapon = self.weapons[name]
+            weapon.name = f"{weapon.name}(enhanced)"
+            updates = [
+                ("dexterity", dexterity), 
+                ("strength", strength), 
+                ("intelligence", intelligence), 
+                ("extra_damage", extra_damage)]
+            for attr, value in updates:
+                setattr(weapon, attr, max(getattr(weapon, attr), value))
+
+
+    def __getattr__(self, attr):
+        if re.match(self.WEAPON_NAME_PATTERN, attr):
+            def _add_weapon(*args):
+                return self.add_weapon(attr, *args)
+            return _add_weapon
+        raise AttributeError(f"{attr} is not a valid attribute")
 
     @property
     def get_strength(self):
