@@ -17,39 +17,68 @@ the damage from which is equal to the sum of his characteristics.
 https://www.codewars.com/kata/651bfcbd409ea1001ef2c3cb - full description with example of usage the character class
 """
 
-from types import MethodType
+
 import re
 
 
 class Unit:
-    def __init__(self, name: str, dexterity: int, strength: int, intelligence: int):
-        self.name = name
+    def __init__(self, name: str, strength: int, dexterity: int, intelligence: int):
+        self.name = name.capitalize()
         self.strength = strength
         self.dexterity = dexterity
         self.intelligence = intelligence
 
     def __repr__(self):
         return self.name
-
-class Weapon(Unit):
-    def __init__(self, name, dexterity, strength, intelligence, extra_damage: int):
-        super().__init__(name, dexterity, strength, intelligence)
-        self.extra_damage = extra_damage
+    
+class Event(Unit):
+    def __init__(self, name, strength, dexterity, intelligence):
+        super().__init__(name, strength, dexterity, intelligence)
         self.name = name.capitalize().replace("_", " ")
+
+class RandomEvent(Event):
+    """Class for describing random event that may change Charcter's attributes"""
+
+    def get_log(self):
+        def _prepare_value(event: Event, attr: str) -> str:
+            value = getattr(event, attr)
+            if value == 0:
+                return ""
+            else:
+                return f"{attr} +{value}," if value > 0 else f"{attr} {value},"
+        return f"{self.name}: {_prepare_value(self, 'strength')} {_prepare_value(self, 'dexterity')} {_prepare_value(self, 'intelligence')}"[0: -1]
+
+class Weapon(Event):
+    def __init__(self, name, strength, dexterity, intelligence, extra_damage: int):
+        super().__init__(name, strength, dexterity, intelligence)
+        self.extra_damage = extra_damage
 
 class Character(Unit):
     WEAPON_NAME_PATTERN = r"\w+_of_\w+"
+    RANDOM_EVENT_PATTERN = r"\w+_\w+"
 
-    def __init__(self, name = 'Hero', dexterity = 10, strength = 10, intelligence = 10):
-        super().__init__(name, dexterity, strength, intelligence)
+    def __init__(self, name = 'Hero', strength = 10, dexterity = 10, intelligence = 10):
+        super().__init__(name, strength, dexterity, intelligence)
         self.name = name.capitalize()
         self.weapons = {}
+        self.log = ""
 
-    def add_weapon(self, name, dexterity, strength, intelligence, extra_damage):
+    def log_weapon(self, weapon: Weapon) -> None:
+        log = self.log
+        self.log = log + f"{self.name} finds '{weapon.name}'\n"
+
+    def log_random_event(self, event: RandomEvent) -> None:
+        log = self.log
+        self.log = log + f"{event.get_log()}\n"
+
+    def add_weapon(self, name, strength, dexterity, intelligence, extra_damage) -> None:
         if name not in self.weapons:
-            self.weapons.update({name: Weapon(name, dexterity, strength, intelligence, extra_damage)})
+            new_weapon = Weapon(name, strength, dexterity, intelligence, extra_damage)
+            self.weapons.update({name: new_weapon})
+            self.log_weapon(new_weapon)
         else:
             weapon = self.weapons[name]
+            self.log_weapon(weapon)
             weapon.name = f"{weapon.name}(enhanced)"
             updates = [
                 ("dexterity", dexterity), 
@@ -59,12 +88,51 @@ class Character(Unit):
             for attr, value in updates:
                 setattr(weapon, attr, max(getattr(weapon, attr), value))
 
+    def perform_random_event(self, name, strength, dexterity, intelligence) -> None:
+            event = RandomEvent(name, strength, dexterity, intelligence)
+            updates = [
+                ("strength", event.strength),
+                ("dexterity", event.dexterity), 
+                ("intelligence", event.intelligence), 
+            ]
+            for attr, value in updates:
+                setattr(self, attr, value)
+            self.log_random_event(event)
+
+    def count_damage(self, weapon=None) -> int:
+        if not weapon:
+            return sum([self.get_strength, self.get_dexterity, self.get_intelligence])
+        return sum(
+                    [self.get_strength * weapon.strength,
+                    self.get_dexterity * weapon.dexterity, 
+                    self.get_intelligence * weapon.intelligence, 
+                    weapon.extra_damage]
+                )
+
+    def find_strongest_weapon(self) -> tuple:
+        weapons = self.weapons
+        damage_dict = {weapon: self.count_damage(weapon) for weapon in weapons.values()}
+        if len(weapons) == 1: 
+            weapon = list(weapons.values())[0]
+        else:
+            weapon = max(damage_dict, key=damage_dict.get)
+        return (weapon, damage_dict[weapon])
+
+    def get_damage_record(self) -> str:
+        if not self.weapons:
+            return f'limbs {self.count_damage()} dmg'
+        weapon_data = self.find_strongest_weapon()
+        return f'{weapon_data[0].name} {weapon_data[1]} dmg'
 
     def __getattr__(self, attr):
         if re.match(self.WEAPON_NAME_PATTERN, attr):
             def _add_weapon(*args):
                 return self.add_weapon(attr, *args)
             return _add_weapon
+        elif re.match(self.RANDOM_EVENT_PATTERN, attr):
+            def _perform_random_event(*args):
+                return self.perform_random_event(attr, *args)
+            return _perform_random_event 
         raise AttributeError(f"{attr} is not a valid attribute")
 
     @property
@@ -87,19 +155,11 @@ class Character(Unit):
 
     def set_intelligence(self, value):
         self.intelligence += value
-    
-
-    def limbs(self):
-        return sum([self.get_strength, self.get_dexterity, self.get_intelligence])
-    
-    def strange_fruit(self, strength, dexterity, intelligence):
-        self.set_strength(strength)
-        self.set_dexterity(dexterity)
-        self.set_intelligence(intelligence)
 
     def character_info(self):
         """ Return a multiline string representing the current characteristics of the hero """
-        return f"{self.name}\nstr {self.strength}\ndex {self.dexterity}\nint {self.intelligence}\nlimbs {self.limbs()} dmg"
+        return f"{self.name}\nstr {self.strength}\ndex {self.dexterity}\nint {self.intelligence}\n{self.get_damage_record()}"
         
     def event_log(self) -> str:
         """ Return a multiline string representing the events that occured in chronological order """
+        return self.log
